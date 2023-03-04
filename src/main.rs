@@ -3,11 +3,10 @@
 
 mod parser;
 
-use std::{collections::HashMap};
 use parser::*;
+use std::collections::HashMap;
 
-fn main() -> Result<(), ParseError<'static>> {
-    
+fn main() -> Result<(), ParseError<String>> {
     let grammar_parser = Parser::grammar_parser();
     let grammar_source = "
         prog       = param_list EOF ;
@@ -28,7 +27,6 @@ fn main() -> Result<(), ParseError<'static>> {
     println!("{}", serde_json::to_string_pretty(&x).unwrap());
 
     Ok(())
-
 }
 
 fn grammar_into_parser<'a>(out: ParseOut<'a>) -> Parser<'a> {
@@ -58,9 +56,9 @@ fn grammar_into_parser<'a>(out: ParseOut<'a>) -> Parser<'a> {
             rules: map,
             start: start.expect("Should have at least one rule"),
         }
-
-    } else { unreachable!() }
-
+    } else {
+        unreachable!()
+    }
 }
 
 fn rule_into_parse_expr<'a>(out: ParseOut<'a>) -> (&'a str, bool, ParseExpr<'a>) {
@@ -78,7 +76,7 @@ fn rule_into_parse_expr<'a>(out: ParseOut<'a>) -> (&'a str, bool, ParseExpr<'a>)
             let meta = ts.pop().expect("Expected some meta...");
 
             let meta = match meta.out {
-                ParseGrouping::Optional(None) => false, 
+                ParseGrouping::Optional(None) => false,
                 ParseGrouping::Optional(Some(box ParseGrouping::Terminal("@"))) => true,
                 _ => todo!(),
             };
@@ -90,24 +88,20 @@ fn rule_into_parse_expr<'a>(out: ParseOut<'a>) -> (&'a str, bool, ParseExpr<'a>)
 
             let parse_expr = seqeuence_into_parse_expr(sequence);
             (id, meta, parse_expr)
-        },
-        _ => unreachable!()
+        }
+        _ => unreachable!(),
     }
 }
 
 fn seqeuence_into_parse_expr<'a>(out: ParseOut<'a>) -> ParseExpr<'a> {
     assert_eq!(out.rule, "sequence");
     match out.out {
-        ParseGrouping::Out(out) => {
-            match &out.rule {
-                &"sequence" => seqeuence_into_parse_expr(*out),
-                &"modifier" => modifier_into_parse_expr(*out, true),
-                _ => unreachable!(),
-            }
-            
+        ParseGrouping::Out(out) => match &out.rule {
+            &"sequence" => seqeuence_into_parse_expr(*out),
+            &"modifier" => modifier_into_parse_expr(*out, true),
+            _ => unreachable!(),
         },
         ParseGrouping::Sequence { mut ts } => {
-
             match ts.len() {
                 3 => {
                     let sequence = ts.pop().expect("Expected a sequence");
@@ -117,22 +111,22 @@ fn seqeuence_into_parse_expr<'a>(out: ParseOut<'a>) -> ParseExpr<'a> {
                     let e1 = modifier_into_parse_expr(modifier, true);
                     let e2 = seqeuence_into_parse_expr(sequence);
                     ParseExpr::Sequence { es: vec![e1, e2] }
-                },
+                }
                 5 => {
                     let sequence = ts.pop().unwrap();
                     ts.pop();
                     ts.pop();
-                    ts.pop(); 
+                    ts.pop();
                     let modifier = ts.pop().unwrap();
 
                     let e1 = modifier_into_parse_expr(modifier, true);
                     let e2 = seqeuence_into_parse_expr(sequence);
-                    
+
                     ParseExpr::Choice { es: vec![e1, e2] }
-                },
+                }
                 _ => unreachable!(),
             }
-        },
+        }
         _ => todo!(),
     }
 }
@@ -140,23 +134,26 @@ fn seqeuence_into_parse_expr<'a>(out: ParseOut<'a>) -> ParseExpr<'a> {
 fn modifier_into_parse_expr<'a>(out: ParseOut<'a>, allow_whitespace: bool) -> ParseExpr<'a> {
     assert_eq!(out.rule, "modifier");
     match out.out {
-        ParseGrouping::Out(out) => {
-            match out.rule {
-                "primary" => primary_into_parse_expr(*out, allow_whitespace),
-                "modifier" => modifier_into_parse_expr(*out, allow_whitespace),
-                _ => unreachable!(),
-            }
+        ParseGrouping::Out(out) => match out.rule {
+            "primary" => primary_into_parse_expr(*out, allow_whitespace),
+            "modifier" => modifier_into_parse_expr(*out, allow_whitespace),
+            _ => unreachable!(),
         },
         ParseGrouping::Sequence { mut ts } => {
-            
             let modifier = ts.pop().expect("Expected one of +, *, ?");
             let primary = ts.pop().expect("Expected primary");
 
             if let ParseGrouping::Terminal(modifier) = modifier.out {
                 match modifier {
-                    "+" => ParseExpr::OneOrMore { e: Box::new(primary_into_parse_expr(primary, true)) },
-                    "*" => ParseExpr::ZeroOrMore { e: Box::new(primary_into_parse_expr(primary, true)) },
-                    "?" => ParseExpr::Optional { e: Box::new(primary_into_parse_expr(primary, true)) },
+                    "+" => ParseExpr::OneOrMore {
+                        e: Box::new(primary_into_parse_expr(primary, true)),
+                    },
+                    "*" => ParseExpr::ZeroOrMore {
+                        e: Box::new(primary_into_parse_expr(primary, true)),
+                    },
+                    "?" => ParseExpr::Optional {
+                        e: Box::new(primary_into_parse_expr(primary, true)),
+                    },
                     _ => unreachable!(),
                 }
             } else if let ParseGrouping::Terminal("_") = primary.out {
@@ -164,8 +161,6 @@ fn modifier_into_parse_expr<'a>(out: ParseOut<'a>, allow_whitespace: bool) -> Pa
             } else {
                 unreachable!()
             }
-
-
         }
         x => todo!("{x:?}"),
     }
@@ -178,7 +173,7 @@ fn primary_into_parse_expr<'a>(out: ParseOut<'a>, allow_whitespace: bool) -> Par
             "primary" => primary_into_parse_expr(*out, allow_whitespace),
             "atomic" => atomic_into_parse_expr(*out, allow_whitespace),
             _ => unreachable!(),
-        }
+        },
         ParseGrouping::Sequence { mut ts } => {
             ts.pop();
             ts.pop();
@@ -194,36 +189,37 @@ fn primary_into_parse_expr<'a>(out: ParseOut<'a>, allow_whitespace: bool) -> Par
 fn atomic_into_parse_expr<'a>(out: ParseOut<'a>, allow_whitespace: bool) -> ParseExpr<'a> {
     assert_eq!(out.rule, "atomic");
     let e = match out.out {
-        ParseGrouping::Out(out) => {
-            match (out.rule, out.out) {
-                ("regex", ParseGrouping::Sequence{ ts}) => {
-                    if let Some(ParseOut { out: ParseGrouping::Terminal(term), .. }) = ts.get(1) {
-                        ParseExpr::Atomic(AtomicExpr::Regex(&term[1..term.len()-1]))
-                    } else {
-                        todo!("err...")
-                    }
-
-                    
-                },
-                ("non_terminal", ParseGrouping::Terminal(term)) => {
-                    if term == "EOF" {
-                        ParseExpr::Atomic(AtomicExpr::EndOfFile)
-                    } else {
-                        ParseExpr::Atomic(AtomicExpr::NonTerminal(term))
-                    }
-                },
-                ("terminal" | "STRING", ParseGrouping::Terminal(term)) => ParseExpr::Atomic(AtomicExpr::Terminal(&term[1..term.len()-1])),
-                (r, o) => unreachable!("{r}, {o:?}"),
+        ParseGrouping::Out(out) => match (out.rule, out.out) {
+            ("regex", ParseGrouping::Sequence { ts }) => {
+                if let Some(ParseOut {
+                    out: ParseGrouping::Terminal(term),
+                    ..
+                }) = ts.get(1)
+                {
+                    ParseExpr::Atomic(AtomicExpr::Regex(&term[1..term.len() - 1]))
+                } else {
+                    todo!("err...")
+                }
             }
-        }
+            ("non_terminal", ParseGrouping::Terminal(term)) => {
+                if term == "EOF" {
+                    ParseExpr::Atomic(AtomicExpr::EndOfFile)
+                } else {
+                    ParseExpr::Atomic(AtomicExpr::NonTerminal(term))
+                }
+            }
+            ("terminal" | "STRING", ParseGrouping::Terminal(term)) => {
+                ParseExpr::Atomic(AtomicExpr::Terminal(&term[1..term.len() - 1]))
+            }
+            (r, o) => unreachable!("{r}, {o:?}"),
+        },
         _ => unreachable!(),
     };
 
     if allow_whitespace {
-        ParseExpr::Sequence { es: vec![
-            ParseExpr::Atomic(AtomicExpr::Regex("\\s*")),
-            e
-        ] }
+        ParseExpr::Sequence {
+            es: vec![ParseExpr::Atomic(AtomicExpr::Regex("\\s*")), e],
+        }
     } else {
         e
     }
