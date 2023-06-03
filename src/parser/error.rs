@@ -37,15 +37,6 @@ impl<T, E> std::ops::Try for Fallible<T, E> {
     }
 }
 
-impl<T, E> Into<Result<T, E>> for Fallible<T, E> {
-    fn into(self) -> Result<T, E> {
-        match self {
-            Fallible::Ok(t) | Fallible::Recovered(t, _) => Ok(t),
-            Fallible::Err(e) => Err(e),
-        }
-    }
-}
-
 #[derive(Clone)]
 pub enum ParseError<Source> {
     UnknownNonTerminal(Source),
@@ -55,6 +46,7 @@ pub enum ParseError<Source> {
         idx: usize,
         msg: String,
         terminals: BTreeSet<Source>,
+        rules: Vec<Source>,
     },
 }
 
@@ -64,6 +56,7 @@ impl<'a> ParseError<&'a str> {
         idx: &usize,
         msg: S,
         terminals: Vec<&'a str>,
+        rules: Vec<&'a str>,
     ) -> ParseError<&'a str> {
         let prev_newline = source[0..*idx].rfind("\n");
         let next_newline = source[*idx..].find("\n");
@@ -92,6 +85,7 @@ impl<'a> ParseError<&'a str> {
             idx: *idx,
             msg: msg.into(),
             terminals: BTreeSet::from_iter(terminals),
+            rules: rules,
         }
     }
 
@@ -146,15 +140,20 @@ impl<'a> ParseError<&'a str> {
             ParseError::UnknownNonTerminal(_) => unreachable!(),
             ParseError::BadMatchError { idx, .. } => *idx == max,
         }) {
-            Some(ParseError::BadMatchError { line, col, idx, .. }) => {
-                Fallible::Ok(Some(ParseError::BadMatchError {
-                    line,
-                    col: *col,
-                    idx: *idx,
-                    msg,
-                    terminals: BTreeSet::from_iter(terminals),
-                }))
-            }
+            Some(ParseError::BadMatchError {
+                line,
+                col,
+                idx,
+                rules,
+                ..
+            }) => Fallible::Ok(Some(ParseError::BadMatchError {
+                line,
+                col: *col,
+                idx: *idx,
+                msg,
+                terminals: BTreeSet::from_iter(terminals),
+                rules: rules.clone(),
+            })),
             _ => unreachable!(),
         }
     }
@@ -162,21 +161,57 @@ impl<'a> ParseError<&'a str> {
 
 impl<Source> std::fmt::Debug for ParseError<Source>
 where
-    Source: std::fmt::Display,
+    Source: std::fmt::Display + std::fmt::Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::UnknownNonTerminal(non_term) => {
                 write!(f, "Grammar Error - Unknown rule: `{non_term}`")
             }
-            Self::BadMatchError { line, col, msg, .. } => {
+            Self::BadMatchError {
+                line,
+                col,
+                msg,
+                rules,
+                ..
+            } => {
                 writeln!(f, "{}", msg)?;
                 writeln!(f, "{line}")?;
                 for _ in 0..*col {
                     write!(f, " ")?;
                 }
-                write!(f, "^")
+                write!(f, "^")?;
+
+                writeln!(f)?;
+                writeln!(f, "rules: {rules:?}")?;
+                Ok(())
             }
+        }
+    }
+}
+
+impl<'a> From<ParseError<&'a str>> for ParseError<String> {
+    fn from(value: ParseError<&'a str>) -> Self {
+        match value {
+            ParseError::BadMatchError {
+                line,
+                col,
+                idx,
+                msg,
+                terminals,
+                rules,
+            } => ParseError::BadMatchError {
+                line: String::from(line),
+                col: col,
+                idx: idx,
+                msg: msg,
+                terminals: terminals
+                    .into_iter()
+                    .map(|term| String::from(term))
+                    .collect(),
+                rules: rules.into_iter().map(|rule| String::from(rule)).collect(),
+            },
+            ParseError::UnknownNonTerminal(e) => ParseError::UnknownNonTerminal(String::from(e)),
         }
     }
 }

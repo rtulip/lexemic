@@ -6,25 +6,106 @@ mod parser;
 use parser::*;
 use std::collections::HashMap;
 
+enum TextColour {
+    None,
+    Red,
+    Green,
+}
+
+struct Modification<'a> {
+    string: &'a str,
+    colour: TextColour,
+    underline: char,
+}
+
+fn modify_source<'a>(modifications: &Vec<Modification<'a>>) -> (String, String) {
+    (
+        modifications
+            .iter()
+            .map(|m| match m.colour {
+                TextColour::None => format!("{}", m.string),
+                TextColour::Green => format!("\x1b[32m{}\x1b[0m", m.string),
+                _ => todo!(),
+            })
+            .collect(),
+        modifications
+            .iter()
+            .map(|m| match m.colour {
+                TextColour::None => {
+                    let mut s = String::new();
+                    m.string.chars().for_each(|_| s.push(m.underline));
+                    s
+                }
+                TextColour::Green => {
+                    let mut s = String::from("\x1b[32m");
+                    m.string.chars().for_each(|_| s.push(m.underline));
+                    s.push_str("\x1b[0m");
+                    s
+                }
+                _ => todo!(),
+            })
+            .collect(),
+    )
+}
+
 fn main() -> Result<(), ParseError<String>> {
     let grammar_parser = Parser::grammar_parser();
     let grammar_source = "
         prog       = param_list EOF ;
-        param      = (tid \":\" ident) ;
+        param      = (type \":\" ident) ;
         param_list = (\"(\" param+ \")\" )
-                   | (\"(\" tid+ \")\")
+                   | (\"(\" type+ \")\")
                    | (\"(\" \")\")
                    ;
-        tid        = ident ;
+        type        = ident ;
         @ident     = ALPHA (_ALPHA | _DIGIT)* ;
         ALPHA      = _re\"[a-zA-Z_]\" ;
         DIGIT      = _re\"[0-9]\" ;
     ";
+
+    // Error: Expected `:` here.
+    // [line 0]: (u64: foo bool   :    bar    bat      )
+    //                                           ^
+    // Note: In a parameter list, every parameter must have a name.
+    // [line 0]: (u64: foo bool   :    bar    bat: name)
+    //                                           ~~~~~~
+    // Help: Add a name to parameter `bat`.
+    let hints_source = "
+        *::param_list::param => [
+            \"Note\": \"In a parameter list, every parameter must have an identifier.\",
+            source_hint: ,
+            \"Help\": \"Add a name to parameter `{param::0}`.\"
+
+        ];
+    ";
     let out = grammar_parser.parse(grammar_source)?;
     let generated_parser = grammar_into_parser(out);
-    let source = "(u64: foo bool:bar";
+    let source = "(u64: foo bool   :    bar    bat      )";
     let x = generated_parser.parse(source)?;
-    println!("{}", serde_json::to_string_pretty(&x).unwrap());
+    println!("{x:#?}");
+
+    let source = "(u64: foo bool   :    bar    bat      )";
+    let bat = source.find("bat").unwrap() + "bat".len();
+    let modifications = vec![
+        Modification {
+            string: &source[0..bat],
+            colour: TextColour::None,
+            underline: ' ',
+        },
+        Modification {
+            string: ": ident",
+            colour: TextColour::Green,
+            underline: '+',
+        },
+        Modification {
+            string: &source[bat..],
+            colour: TextColour::None,
+            underline: ' ',
+        },
+    ];
+
+    let (s, u) = modify_source(&modifications);
+    println!("{s}\n{u}");
 
     Ok(())
 }

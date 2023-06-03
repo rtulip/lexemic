@@ -16,28 +16,11 @@ impl<'a> Parser<'a> {
             Some((rule, group)) => {
                 let mut idx = 0;
                 match rule
-                    .parse(self.start, group, self, source, &mut idx)
+                    .parse(&mut vec![self.start], group, self, source, &mut idx)
                     .into_result()
                 {
                     Ok(p) => Ok(p),
-                    Err(e) => match e {
-                        ParseError::BadMatchError {
-                            line,
-                            col,
-                            idx,
-                            msg,
-                            terminals,
-                        } => Err(ParseError::BadMatchError {
-                            line: String::from(line),
-                            col,
-                            idx,
-                            msg,
-                            terminals: terminals.into_iter().map(|t| String::from(t)).collect(),
-                        }),
-                        ParseError::UnknownNonTerminal(term) => {
-                            Err(ParseError::UnknownNonTerminal(String::from(term)))
-                        }
-                    },
+                    Err(e) => Err(e.into()),
                 }
             }
             _ => todo!(),
