@@ -65,15 +65,15 @@ impl<'a> ParseError<&'a str> {
                 if prev + 1 < *idx {
                     (&source[prev + 1..*idx + next], *idx - prev - 1)
                 } else {
-                    todo!()
+                    (&source[0..*idx + next], *idx)
                 }
             }
-            (None, Some(_)) => todo!(),
+            (None, Some(next)) => (&source[0..*idx + next], *idx),
             (Some(prev), None) => {
                 if prev + 1 < *idx {
                     (&source[prev + 1..], *idx - prev - 1)
                 } else {
-                    todo!()
+                    (&source[0..*idx], *idx)
                 }
             }
             (None, None) => (source, *idx),
@@ -168,22 +168,19 @@ where
             Self::UnknownNonTerminal(non_term) => {
                 write!(f, "Grammar Error - Unknown rule: `{non_term}`")
             }
-            Self::BadMatchError {
-                line,
-                col,
-                msg,
-                rules,
-                ..
-            } => {
+            Self::BadMatchError { line, col, msg, .. } => {
                 writeln!(f, "{}", msg)?;
                 writeln!(f, "{line}")?;
-                for _ in 0..*col {
-                    write!(f, " ")?;
-                }
+                match col.checked_sub(1) {
+                    Some(n) => {
+                        for _ in 0..n {
+                            write!(f, " ")?;
+                        }
+                    }
+                    None => (),
+                };
                 write!(f, "^")?;
 
-                writeln!(f)?;
-                writeln!(f, "rules: {rules:?}")?;
                 Ok(())
             }
         }
